@@ -217,57 +217,37 @@ def create_groundtruth_database(dataset_class_name,
                     file_client_args=file_client_args)
             ])
     
-    elif dataset_class_name == 'SPADataset':
-        file_client_args = dict(backend='disk')
-        dataset_cfg.update(
-            test_mode=False,
-            split='training',
-            modality=dict(
-                use_lidar=True,
-                use_depth=False,
-                use_lidar_intensity=True,
-                use_camera=with_mask,
-            ),
-            pipeline=[
-                dict(
-                    type='LoadPointsFromFile',
-                    coord_type='LIDAR',
-                    load_dim=4,
-                    use_dim=4,
-                    file_client_args=file_client_args),
-                dict(
-                    type='LoadAnnotations3D',
-                    with_bbox_3d=True,
-                    with_label_3d=True,
-                    file_client_args=file_client_args)
-            ])
-    
-    elif dataset_class_name == 'SPA_MVX_Dataset':
-        file_client_args = dict(backend='disk')
-        dataset_cfg.update(
-            test_mode=False,
-            split='training',
-            modality=dict(
-                use_lidar=True,
-                use_depth=False,
-                use_lidar_intensity=True,
-                use_camera=with_mask,
-            ),
-            pipeline=[
-                dict(
-                    type='LoadPointsFromFile',
-                    coord_type='LIDAR',
-                    load_dim=4,
-                    use_dim=4,
-                    file_client_args=file_client_args),
-                dict(
-                    type='LoadAnnotations3D',
-                    with_bbox_3d=True,
-                    with_label_3d=True,
-                    file_client_args=file_client_args)
-            ])
-    
     elif dataset_class_name == 'SPA_Nus_Dataset':
+        dataset_cfg.update(
+            use_valid_flag=True,
+            pipeline=[
+                dict(
+                    type='LoadPointsFromFile',
+                    coord_type='LIDAR',
+                    load_dim=4,
+                    use_dim=4),
+                dict(
+                    type='LoadAnnotations3D',
+                    with_bbox_3d=True,
+                    with_label_3d=True)
+            ])
+    
+    elif dataset_class_name == 'SPA_Nus_Dataset_Top':
+        dataset_cfg.update(
+            use_valid_flag=True,
+            pipeline=[
+                dict(
+                    type='LoadPointsFromFile',
+                    coord_type='LIDAR',
+                    load_dim=4,
+                    use_dim=4),
+                dict(
+                    type='LoadAnnotations3D',
+                    with_bbox_3d=True,
+                    with_label_3d=True)
+            ])
+    
+    elif dataset_class_name == 'SPA_Nus_Dataset_Bottom':
         dataset_cfg.update(
             use_valid_flag=True,
             pipeline=[

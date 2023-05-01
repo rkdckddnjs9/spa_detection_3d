@@ -142,7 +142,7 @@ class RandomFlip3D(RandomFlip):
             # ['cam2img'][0][2] = c_u
             # see more details and examples at
             # https://github.com/open-mmlab/mmdetection3d/pull/744
-            if 'data/spa/' in input_dict['img_info']['id']:
+            if '*' in input_dict['img_info']['id']:
                 input_dict['cam2img'][0][0][2] = w - input_dict['cam2img'][0][0][2]
             else:
                 input_dict['cam2img'][0][2] = w - input_dict['cam2img'][0][2]

@@ -30,7 +30,7 @@ def _read_imageset_file(path):
         lines = f.readlines()
     return [line.splitlines()[0] for line in lines]
 
-def create_spa_nus_infos(root_path,
+def create_spa_nus_bottom_infos(root_path,
                           info_prefix,
                           version='v1.0-trainval',
                           max_sweeps=10):
@@ -318,7 +318,7 @@ def _fill_trainval_infos(nusc,
                               [P4_intrinsic, P4_extrinsic], 
             ]
 
-        velo_path = root_path / place / scene / "velo/concat/bin_data" / "{}.bin".format(frame)
+        velo_path = root_path / place / scene / "velo/bottom/bin_data" / "{}.bin".format(frame)
 
         # lidar_token = sample['data']['LIDAR_TOP']
         # sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
@@ -479,7 +479,7 @@ def _fill_trainval_infos(nusc,
                               [P4_intrinsic, P4_extrinsic], 
             ]
 
-        velo_path = root_path / place / scene / "velo/concat/bin_data" / "{}.bin".format(frame)
+        velo_path = root_path / place / scene / "velo/bottom/bin_data" / "{}.bin".format(frame)
 
         # lidar_token = sample['data']['LIDAR_TOP']
         # sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
@@ -806,7 +806,7 @@ def get_2d_boxes(nusc,
     frame = str(cam_lnfo['data_path']).split("/")[-1].split(".")[0]
     label_path = root_path + place + "/" + scene + "/label/{}.txt".format(frame)
     label_ = get_label_anno(label_path)
-    velo_path = root_path +'/'+ place +'/'+ scene +'/'+ "velo/concat/bin_data/{}.bin".format(frame)
+    velo_path = root_path +'/'+ place +'/'+ scene +'/'+ "velo/bottom/bin_data/{}.bin".format(frame)
     points = np.fromfile(velo_path, dtype=np.float32, count=-1).reshape([-1, 4]) 
     odom_path = root_path +'/'+ place +'/'+ scene +'/'+ "ego_trajectory/{}.txt".format(frame)
 
@@ -954,7 +954,7 @@ def get_2d_boxes_(nusc,
     frame = str(cam_lnfo['data_path']).split("/")[-1].split(".")[0]
     label_path = root_path + place + "/" + scene + "/label/{}.txt".format(frame)
     label_ = get_label_anno(label_path)
-    velo_path = root_path +'/'+ place +'/'+ scene +'/'+ "velo/concat/bin_data/{}.bin".format(frame)
+    velo_path = root_path +'/'+ place +'/'+ scene +'/'+ "velo/bottom/bin_data/{}.bin".format(frame)
     points = np.fromfile(velo_path, dtype=np.float32, count=-1).reshape([-1, 4]) 
     odom_path = root_path +'/'+ place +'/'+ scene +'/'+ "ego_trajectory/{}.txt".format(frame)
 
@@ -987,19 +987,6 @@ def get_2d_boxes_(nusc,
         ann_rec['num_lidar_pts'] = num_pts_list[0]
         ann_rec['attribute_name'] = label_['name'][i]
         ann_rec['attribute_id'] = label_['name'][i]
-
-        # nuscenes converter 참고
-        #gt_boxes = gt_boxes[[0,1,2,3,5,4,6]]#lwh -> lhw
-        #gt_boxes *= -1
-    
-
-        # 3d box corners on lidar coordinage to 3d box corners on image coordinate
-        # Generate dictionary record to be included in the .json file.
-        # gt_boxes_ = np.array(ann_rec['translation'] + ann_rec['size'] + [label_['rotation_y'][i]])
-        # corners_3d = box_center_to_corner_3d_(gt_boxes_)
-
-        # in_front = np.argwhere(corners_3d[2, :] >0).flatten()
-        # corners_3d = corners_3d[:, in_front]
 
         #3d box projection
         intrinsic = cam_lnfo['cam_intrinsic'][0]

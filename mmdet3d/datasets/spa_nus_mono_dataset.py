@@ -3,13 +3,22 @@ import copy
 import tempfile
 import warnings
 from os import path as osp
-
+import json
 import mmcv
 import numpy as np
 import pyquaternion
 import torch
 from nuscenes.utils.data_classes import Box as NuScenesBox
-
+from nuscenes.eval.common.loaders import load_prediction
+import os
+from nuscenes.eval.tracking.data_classes import TrackingBox
+from nuscenes.eval.common.data_classes import EvalBoxes
+from nuscenes.eval.detection.evaluate import DetectionEval
+from nuscenes.eval.detection.data_classes import DetectionConfig, DetectionMetrics, DetectionBox, \
+    DetectionMetricDataList
+from nuscenes.eval.detection.constants import TP_METRICS
+from typing import Tuple, Dict, Any
+from pathlib import Path
 from mmdet3d.core import bbox3d2result, box3d_multiclass_nms, xywhr2xyxyr
 from mmdet.datasets import CocoDataset
 from ..core import show_multi_modality_result
@@ -17,7 +26,11 @@ from ..core.bbox import CameraInstance3DBoxes, get_box_type
 from .builder import DATASETS
 from .pipelines import Compose
 from .utils import extract_result_dict, get_loading_pipeline
+from nuscenes import NuScenes
+import time
+from nuscenes.eval.detection.algo import accumulate, calc_ap, calc_tp
 
+cls_label_map = {'car' : 'car', 'motorcycle': 'motorcycle', 'pedestrian': 'pedestrian', 'bicycle':'bicycle', 'truck':'truck', 'bus':'bus', 'kickboard':'kickboard', 'pedestrian_sitting':'pedestrian'}
 
 @DATASETS.register_module()
 class SPA_Nus_MonoDataset(CocoDataset):
@@ -154,8 +167,8 @@ class SPA_Nus_MonoDataset(CocoDataset):
             valid_img_ids = []
             for i, img_info in enumerate(self.data_infos):
                 img_id = self.img_ids[i]
-                img_id_ = img_id.split("/")[2] + "*" + img_id.split("/")[3] + "*" + img_id.split("/")[-1].split(".png")[0]
-                if self.filter_empty_gt and img_id_ not in ids_in_cat:
+                # img_id_ = img_id.split("/")[2] + "*" + img_id.split("/")[3] + "*" + img_id.split("/")[-1].split(".png")[0]
+                if self.filter_empty_gt and img_id not in ids_in_cat:
                     continue
                 if min(img_info['width'], img_info['height']) >= min_size:
                     valid_inds.append(i)
@@ -367,7 +380,7 @@ class SPA_Nus_MonoDataset(CocoDataset):
             annos = []
             boxes, attrs = output_to_nusc_box(det)
             sample_token = self.data_infos[sample_id]['token']
-            boxes, attrs = cam_nusc_box_to_global(self.data_infos[sample_id],
+            boxes, attrs = cam_nusc_box_to_global_(self.data_infos[sample_id],
                                                   boxes, attrs,
                                                   mapped_class_names,
                                                   self.eval_detection_configs,
@@ -378,7 +391,7 @@ class SPA_Nus_MonoDataset(CocoDataset):
             # Remove redundant predictions caused by overlap of images
             if (sample_id + 1) % CAM_NUM != 0:
                 continue
-            boxes = global_nusc_box_to_cam(
+            boxes = global_nusc_box_to_cam_(
                 self.data_infos[sample_id + 1 - CAM_NUM], boxes_per_frame,
                 mapped_class_names, self.eval_detection_configs,
                 self.eval_version)
@@ -410,7 +423,7 @@ class SPA_Nus_MonoDataset(CocoDataset):
             cam_boxes3d = CameraInstance3DBoxes(boxes3d, box_dim=9)
             det = bbox3d2result(cam_boxes3d, scores, labels, attrs)
             boxes, attrs = output_to_nusc_box(det)
-            boxes, attrs = cam_nusc_box_to_global(
+            boxes, attrs = cam_nusc_box_to_global_(
                 self.data_infos[sample_id + 1 - CAM_NUM], boxes, attrs,
                 mapped_class_names, self.eval_detection_configs,
                 self.eval_version)
@@ -597,7 +610,7 @@ class SPA_Nus_MonoDataset(CocoDataset):
         def json_to_dict(path):
             scen_ped_id={}
             
-            with open(path, 'r') as f:
+            with open(path['img_bbox'], 'r') as f:
                 json_1 = json.load(f)
             return json_1
         # save json
@@ -625,11 +638,12 @@ class SPA_Nus_MonoDataset(CocoDataset):
             gt_json['results'][t_] = []
             
             data_ = self.data_infos[i]
-            for ii in range(self.data_infos[i]['gt_boxes'].shape[0]):
+            for ii in range(np.array(self.data_infos[i]['gt_boxes']).shape[0]):
                 d_ = {}
                 _token = data_['token']
-                _names = data_['gt_names'][ii]
-                _boxes = data_['gt_boxes'][ii]
+                # _names = data_['gt_names'][ii]
+                _names = 'pedestrian'
+                _boxes = np.array(data_['gt_boxes'])[ii]
                 d_['sample_token'] = _token
                 d_['translation'] = _boxes[:3].tolist() 
                 # d_['size'] = _boxes[3:6].tolist() 
@@ -645,6 +659,23 @@ class SPA_Nus_MonoDataset(CocoDataset):
 
         save_json(save_path_+'results_pred_nusc.json', result_)
         save_json(save_path_+'results_gt_nusc.json', gt_json)
+
+        if isinstance(result_files, dict):
+            results_dict = dict()
+            for name in result_names:
+                print('Evaluating bboxes of {}'.format(name))
+                ret_dict = self._evaluate_single(result_files[name])
+            results_dict.update(ret_dict)
+        elif isinstance(result_files, str):
+            results_dict = self._evaluate_single(result_files)
+
+        if tmp_dir is not None:
+            tmp_dir.cleanup()
+
+        if show or out_dir:
+            self.show(results, out_dir, pipeline=pipeline)
+        return results_dict
+
         
 
         if isinstance(result_files, dict):
@@ -847,6 +878,41 @@ def cam_nusc_box_to_global(info,
         attr_list.append(attr)
     return box_list, attr_list
 
+def cam_nusc_box_to_global_(info,
+                           boxes,
+                           attrs,
+                           classes,
+                           eval_configs,
+                           eval_version='detection_cvpr_2019'):
+    """Convert the box from camera to global coordinate.
+
+    Args:
+        info (dict): Info for a specific sample data, including the
+            calibration information.
+        boxes (list[:obj:`NuScenesBox`]): List of predicted NuScenesBoxes.
+        classes (list[str]): Mapped classes in the evaluation.
+        eval_configs (object): Evaluation configuration object.
+        eval_version (str, optional): Evaluation version.
+            Default: 'detection_cvpr_2019'
+
+    Returns:
+        list: List of standard NuScenesBoxes in the global
+            coordinate.
+    """
+    box_list = []
+    attr_list = []
+    for (box, attr) in zip(boxes, attrs):
+        # Move box to ego vehicle coord system
+        # filter det in ego.
+        cls_range_map = eval_configs.class_range
+        radius = np.linalg.norm(box.center[:2], 2)
+        det_range = cls_range_map[classes[box.label]]
+        if radius > det_range:
+            continue
+        box_list.append(box)
+        attr_list.append(attr)
+    return box_list, attr_list
+
 
 def global_nusc_box_to_cam(info,
                            boxes,
@@ -886,6 +952,44 @@ def global_nusc_box_to_cam(info,
         box_list.append(box)
     return box_list
 
+def global_nusc_box_to_cam_(info,
+                           boxes,
+                           classes,
+                           eval_configs,
+                           eval_version='detection_cvpr_2019'):
+    """Convert the box from global to camera coordinate.
+
+    Args:
+        info (dict): Info for a specific sample data, including the
+            calibration information.
+        boxes (list[:obj:`NuScenesBox`]): List of predicted NuScenesBoxes.
+        classes (list[str]): Mapped classes in the evaluation.
+        eval_configs (object): Evaluation configuration object.
+        eval_version (str, optional): Evaluation version.
+            Default: 'detection_cvpr_2019'
+
+    Returns:
+        list: List of standard NuScenesBoxes in the global
+            coordinate.
+    """
+    box_list = []
+    for box in boxes:
+        # Move box to ego vehicle coord system
+        # box.translate(-np.array(info['ego2global_translation']))
+        # box.rotate(
+        #     pyquaternion.Quaternion(info['ego2global_rotation']).inverse)
+        # filter det in ego.
+        cls_range_map = eval_configs.class_range
+        radius = np.linalg.norm(box.center[:2], 2)
+        det_range = cls_range_map[classes[box.label]]
+        if radius > det_range:
+            continue
+        # Move box to camera coord system
+        # box.translate(-np.array(info['cam2ego_translation']))
+        # box.rotate(pyquaternion.Quaternion(info['cam2ego_rotation']).inverse)
+        box_list.append(box)
+    return box_list
+
 
 def nusc_box_to_cam_box3d(boxes):
     """Convert boxes from :obj:`NuScenesBox` to :obj:`CameraInstance3DBoxes`.
@@ -904,8 +1008,9 @@ def nusc_box_to_cam_box3d(boxes):
     velocity = torch.Tensor([b.velocity[0::2] for b in boxes]).view(-1, 2)
 
     # convert nusbox to cambox convention
-    dims[:, [0, 1, 2]] = dims[:, [1, 2, 0]] #l,w,h -> w,l,h
-    rots = -rots
+    #dims[:, [0, 1, 2]] = dims[:, [1, 2, 0]] #l,w,h -> w,l,h
+    # dims[:, [0, 1, 2]] = dims[:, [1, 0, 2]]
+    #rots = -rots
 
     boxes_3d = torch.cat([locs, dims, rots, velocity], dim=1).cuda()
     cam_boxes3d = CameraInstance3DBoxes(
@@ -916,3 +1021,324 @@ def nusc_box_to_cam_box3d(boxes):
     indices = labels.new_tensor(list(range(scores.shape[0])))
     nms_scores[indices, labels] = scores
     return cam_boxes3d, nms_scores, labels
+
+class DetectionSPAEval(DetectionEval):
+    """
+    dumy class
+    """
+
+    def __init__(self,
+                 nusc: NuScenes,
+                 config: DetectionConfig,
+                 result_path: str,
+                 eval_set: str,
+                 output_dir: str = None,
+                 use_smAP: bool = False,
+                 verbose: bool = True):
+        pass
+    
+class SPA_NuScenesEval(DetectionSPAEval):
+    def __init__(self,
+                 nusc: NuScenes,
+                 config: DetectionConfig,
+                 result_path: str,
+                 gt_path: str,
+                 eval_set: str,
+                 output_dir: str = None,
+                 verbose: bool = True):
+        """
+        Initialize a DetectionEval object.
+        :param nusc: A NuScenes object.
+        :param config: A DetectionConfig object.
+        :param result_path: Path of the nuScenes JSON result file.
+        :param eval_set: The dataset split to evaluate on, e.g. train, val or test.
+        :param output_dir: Folder to save plots and results to.
+        :param verbose: Whether to print to stdout.
+        """
+        self.nusc = nusc
+        self.result_path = result_path
+        self.gt_path=gt_path
+        self.eval_set = eval_set
+        self.output_dir = output_dir
+        self.verbose = verbose
+        self.cfg = config
+
+        # Check result file exists.
+        assert os.path.exists(result_path), 'Error: The result file does not exist!'
+
+        # Make dirs.
+        self.plot_dir = os.path.join(self.output_dir, 'plots')
+        if not os.path.isdir(self.output_dir):
+            os.makedirs(self.output_dir)
+        if not os.path.isdir(self.plot_dir):
+            os.makedirs(self.plot_dir)
+            
+        # Load data.
+        if verbose:
+            print('Initializing nuScenes detection evaluation')
+        self.pred_boxes, self.meta = load_prediction(self.result_path, self.cfg.max_boxes_per_sample, DetectionBox,
+                                                     verbose=verbose)
+        # self.gt_boxes = load_gt(self.nusc, self.eval_set, DetectionBox, verbose=verbose)
+        self.gt_boxes, self.meta = load_prediction(self.gt_path, self.cfg.max_boxes_per_sample, DetectionBox,
+                                                     verbose=verbose)
+
+        assert set(self.pred_boxes.sample_tokens) == set(self.gt_boxes.sample_tokens), \
+            "Samples in split doesn't match samples in predictions."
+
+        # Add center distances.
+        self.pred_boxes = add_center_dist_(nusc, self.pred_boxes)
+        self.gt_boxes = add_center_dist_(nusc, self.gt_boxes)
+
+        # Filter boxes (distance, points per box, etc.).
+        if verbose:
+            print('Filtering predictions')
+        self.pred_boxes = filter_eval_boxes_(nusc, self.pred_boxes, self.cfg.class_range, verbose=verbose)
+        if verbose:
+            print('Filtering ground truth annotations')
+        self.gt_boxes = filter_eval_boxes_(nusc, self.gt_boxes, self.cfg.class_range, verbose=verbose)
+
+        self.sample_tokens = self.gt_boxes.sample_tokens
+
+    def evaluate(self) -> Tuple[DetectionMetrics, DetectionMetricDataList]:
+        """
+        Performs the actual evaluation.
+        :return: A tuple of high-level and the raw metric data.
+        """
+        start_time = time.time()
+
+        # -----------------------------------
+        # Step 1: Accumulate metric data for all classes and distance thresholds.
+        # -----------------------------------
+        if self.verbose:
+            print('Accumulating metric data...')
+        metric_data_list = DetectionMetricDataList()
+        self.cfg.class_names = ['car', 'bicycle', 'motorcycle', 'pedestrian', 'truck', 'bus', 'kickboard']
+        for class_name in self.cfg.class_names:
+            for dist_th in self.cfg.dist_ths:
+                md = accumulate(self.gt_boxes, self.pred_boxes, class_name, self.cfg.dist_fcn_callable, dist_th)
+                metric_data_list.set(class_name, dist_th, md)
+
+        # -----------------------------------
+        # Step 2: Calculate metrics from the data.
+        # -----------------------------------
+        if self.verbose:
+            print('Calculating metrics...')
+        metrics = DetectionMetrics(self.cfg)
+        for class_name in self.cfg.class_names:
+            # Compute APs.
+            for dist_th in self.cfg.dist_ths:
+                metric_data = metric_data_list[(class_name, dist_th)]
+                ap = calc_ap(metric_data, self.cfg.min_recall, self.cfg.min_precision)
+                metrics.add_label_ap(class_name, dist_th, ap)
+
+            # Compute TP metrics.
+            for metric_name in TP_METRICS:
+                metric_data = metric_data_list[(class_name, self.cfg.dist_th_tp)]
+                if class_name in ['traffic_cone'] and metric_name in ['attr_err', 'vel_err', 'orient_err']:
+                    tp = np.nan
+                elif class_name in ['barrier'] and metric_name in ['attr_err', 'vel_err']:
+                    tp = np.nan
+                else:
+                    tp = calc_tp(metric_data, self.cfg.min_recall, metric_name)
+                metrics.add_label_tp(class_name, metric_name, tp)
+
+        # Compute evaluation time.
+        metrics.add_runtime(time.time() - start_time)
+
+        return metrics, metric_data_list
+
+    def render(self, metrics: DetectionMetrics, md_list: DetectionMetricDataList) -> None:
+        """
+        Renders various PR and TP curves.
+        :param metrics: DetectionMetrics instance.
+        :param md_list: DetectionMetricDataList instance.
+        """
+        if self.verbose:
+            print('Rendering PR and TP curves')
+
+        # def savepath(name):
+        #     return os.path.join(self.plot_dir, name + '.pdf')
+
+        # summary_plot(md_list, metrics, min_precision=self.cfg.min_precision, min_recall=self.cfg.min_recall,
+        #              dist_th_tp=self.cfg.dist_th_tp, savepath=savepath('summary'))
+
+        # for detection_name in self.cfg.class_names:
+        #     class_pr_curve(md_list, metrics, detection_name, self.cfg.min_precision, self.cfg.min_recall,
+        #                    savepath=savepath(detection_name + '_pr'))
+
+        #     class_tp_curve(md_list, metrics, detection_name, self.cfg.min_recall, self.cfg.dist_th_tp,
+        #                    savepath=savepath(detection_name + '_tp'))
+
+        # for dist_th in self.cfg.dist_ths:
+        #     dist_pr_curve(md_list, metrics, dist_th, self.cfg.min_precision, self.cfg.min_recall,
+        #                   savepath=savepath('dist_pr_' + str(dist_th)))
+
+    def main(self,
+             plot_examples: int = 0,
+             render_curves: bool = True) -> Dict[str, Any]:
+        """
+        Main function that loads the evaluation code, visualizes samples, runs the evaluation and renders stat plots.
+        :param plot_examples: How many example visualizations to write to disk.
+        :param render_curves: Whether to render PR and TP curves to disk.
+        :return: A dict that stores the high-level metrics and meta data.
+        """
+        # if plot_examples > 0:
+        #     # Select a random but fixed subset to plot.
+        #     random.seed(42)
+        #     sample_tokens = list(self.sample_tokens)
+        #     random.shuffle(sample_tokens)
+        #     sample_tokens = sample_tokens[:plot_examples]
+
+        #     # Visualize samples.
+        #     example_dir = os.path.join(self.output_dir, 'examples')
+        #     if not os.path.isdir(example_dir):
+        #         os.mkdir(example_dir)
+        #     for sample_token in sample_tokens:
+        #         visualize_sample(self.nusc,
+        #                          sample_token,
+        #                          self.gt_boxes if self.eval_set != 'test' else EvalBoxes(),
+        #                          # Don't render test GT.
+        #                          self.pred_boxes,
+        #                          eval_range=max(self.cfg.class_range.values()),
+        #                          savepath=os.path.join(example_dir, '{}.png'.format(sample_token)))
+
+        # Run evaluation.
+        metrics, metric_data_list = self.evaluate()
+
+        # Render PR and TP curves.
+        if render_curves:
+            self.render(metrics, metric_data_list)
+
+        # Dump the metric data, meta and metrics to disk.
+        if self.verbose:
+            print('Saving metrics to: %s' % self.output_dir)
+        metrics_summary = metrics.serialize()
+        metrics_summary['meta'] = self.meta.copy()
+        with open(os.path.join(self.output_dir, 'metrics_summary.json'), 'w') as f:
+            json.dump(metrics_summary, f, indent=2)
+        with open(os.path.join(self.output_dir, 'metrics_details.json'), 'w') as f:
+            json.dump(metric_data_list.serialize(), f, indent=2)
+
+        # Print high-level metrics.
+        print('mAP: %.4f' % (metrics_summary['mean_ap']))
+        err_name_mapping = {
+            'trans_err': 'mATE',
+            'scale_err': 'mASE',
+            'orient_err': 'mAOE',
+            'vel_err': 'mAVE',
+            'attr_err': 'mAAE'
+        }
+        for tp_name, tp_val in metrics_summary['tp_errors'].items():
+            print('%s: %.4f' % (err_name_mapping[tp_name], tp_val))
+        print('NDS: %.4f' % (metrics_summary['nd_score']))
+        print('Eval time: %.1fs' % metrics_summary['eval_time'])
+
+        # Print per-class metrics.
+        print()
+        print('Per-class results:')
+        print('Object Class\tAP\tATE\tASE\tAOE\tAVE\tAAE')
+        class_aps = metrics_summary['mean_dist_aps']
+        class_tps = metrics_summary['label_tp_errors']
+        for class_name in class_aps.keys():
+            print('%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f'
+                  % (class_name, class_aps[class_name],
+                     class_tps[class_name]['trans_err'],
+                     class_tps[class_name]['scale_err'],
+                     class_tps[class_name]['orient_err'],
+                     class_tps[class_name]['vel_err'],
+                     class_tps[class_name]['attr_err']))
+
+        return metrics_summary
+
+def  add_center_dist_(nusc: NuScenes,
+                    eval_boxes: EvalBoxes):
+    """
+    Adds the cylindrical (xy) center distance from ego vehicle to each box.
+    :param nusc: The NuScenes instance.
+    :param eval_boxes: A set of boxes, either GT or predictions.
+    :return: eval_boxes augmented with center distances.
+    """
+    for sample_token in eval_boxes.sample_tokens:
+        # sample_rec = nusc.get('sample', sample_token)
+        # sd_record = nusc.get('sample_data', sample_rec['data']['LIDAR_TOP'])
+        # pose_record = nusc.get('ego_pose', sd_record['ego_pose_token'])
+
+        for box in eval_boxes[sample_token]:
+            # Both boxes and ego pose are given in global coord system, so distance can be calculated directly.
+            # Note that the z component of the ego pose is 0.
+            ego_translation = (box.translation[0],
+                               box.translation[1],
+                               box.translation[2])
+            if isinstance(box, DetectionBox) or isinstance(box, TrackingBox):
+                box.ego_translation = ego_translation
+            else:
+                raise NotImplementedError
+
+    return eval_boxes
+
+def filter_eval_boxes_(nusc: NuScenes,
+                      eval_boxes: EvalBoxes,
+                      max_dist: Dict[str, float],
+                      verbose: bool = False) -> EvalBoxes:
+    """
+    Applies filtering to boxes. Distance, bike-racks and points per box.
+    :param nusc: An instance of the NuScenes class.
+    :param eval_boxes: An instance of the EvalBoxes class.
+    :param max_dist: Maps the detection name to the eval distance threshold for that class.
+    :param verbose: Whether to print to stdout.
+    """
+    # Retrieve box type for detectipn/tracking boxes.
+    class_field = _get_box_class_field(eval_boxes)
+
+    # Accumulators for number of filtered boxes.
+    total, dist_filter, point_filter, bike_rack_filter = 0, 0, 0, 0
+    for ind, sample_token in enumerate(eval_boxes.sample_tokens):
+
+        # Filter on distance first.
+        total += len(eval_boxes[sample_token])
+        eval_boxes.boxes[sample_token] = [box for box in eval_boxes[sample_token] if
+                                          box.ego_dist < max_dist[box.__getattribute__(class_field)]]
+        dist_filter += len(eval_boxes[sample_token])
+
+        # Then remove boxes with zero points in them. Eval boxes have -1 points by default.
+        eval_boxes.boxes[sample_token] = [box for box in eval_boxes[sample_token] if not box.num_pts == 0]
+        point_filter += len(eval_boxes[sample_token])
+
+        filtered_boxes = []
+        for box in eval_boxes[sample_token]:
+
+            filtered_boxes.append(box)
+
+        eval_boxes.boxes[sample_token] = filtered_boxes
+        bike_rack_filter += len(eval_boxes.boxes[sample_token])
+
+    if verbose:
+        print("=> Original number of boxes: %d" % total)
+        print("=> After distance based filtering: %d" % dist_filter)
+        print("=> After LIDAR and RADAR points based filtering: %d" % point_filter)
+        print("=> After bike rack filtering: %d" % bike_rack_filter)
+
+    return eval_boxes
+
+def _get_box_class_field(eval_boxes: EvalBoxes) -> str:
+    """
+    Retrieve the name of the class field in the boxes.
+    This parses through all boxes until it finds a valid box.
+    If there are no valid boxes, this function throws an exception.
+    :param eval_boxes: The EvalBoxes used for evaluation.
+    :return: The name of the class field in the boxes, e.g. detection_name or tracking_name.
+    """
+    assert len(eval_boxes.boxes) > 0
+    box = None
+    for val in eval_boxes.boxes.values():
+        if len(val) > 0:
+            box = val[0]
+            break
+    if isinstance(box, DetectionBox):
+        class_field = 'detection_name'
+    elif isinstance(box, TrackingBox):
+        class_field = 'tracking_name'
+    else:
+        raise Exception('Error: Invalid box type: %s' % box)
+
+    return class_field

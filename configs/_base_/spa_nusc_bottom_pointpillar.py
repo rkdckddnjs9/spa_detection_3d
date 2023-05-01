@@ -4,7 +4,7 @@ point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 class_names = [
     'pedestrian',
 ]
-dataset_type = 'SPA_Nus_Dataset'
+dataset_type = 'SPA_Nus_Dataset_Bottom'
 data_root = 'data/spa/'
 # Input modality for nuScenes dataset, this is consistent with the submission
 # format which requires the information in input_modality.
@@ -92,7 +92,7 @@ data = dict(
         dataset=dict(
                         type=dataset_type,
                         data_root=data_root,
-                        ann_file=data_root + 'spa_nusc_infos_train.pkl',
+                        ann_file=data_root + 'spa_nusc_bottom_infos_train.pkl',
                         pipeline=train_pipeline,
                         classes=class_names,
                         modality=input_modality,
@@ -104,7 +104,7 @@ data = dict(
     val=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'spa_nusc_infos_val.pkl',
+        ann_file=data_root + 'spa_nusc_bottom_infos_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -114,7 +114,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'spa_nusc_infos_val.pkl',
+        ann_file=data_root + 'spa_nusc_bottom_infos_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,

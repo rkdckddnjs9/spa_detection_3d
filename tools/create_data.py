@@ -4,11 +4,11 @@ from os import path as osp
 
 from tools.data_converter import indoor_converter as indoor
 from tools.data_converter import kitti_converter as kitti
-from tools.data_converter import spa_converter as spa
-from tools.data_converter import spa_mvx_converter as spa_mvx
 from tools.data_converter import lyft_converter as lyft_converter
 from tools.data_converter import nuscenes_converter as nuscenes_converter
 from tools.data_converter import spa_nus_converter as spa_nus_converter
+from tools.data_converter import spa_nus_top_converter as spa_nus_top_converter
+from tools.data_converter import spa_nus_bottom_converter as spa_nus_bottom_converter
 from tools.data_converter.create_gt_database import (
     GTDatabaseCreater, create_groundtruth_database)
 
@@ -89,6 +89,88 @@ def spa_nus_data_prep(root_path,
     spa_nus_converter.export_2d_annotation(
         root_path, info_train_path, version=version)
     spa_nus_converter.export_2d_annotation(
+        root_path, info_val_path, version=version)
+
+    create_groundtruth_database(dataset_name, root_path, info_prefix,
+                                f'{out_dir}/{info_prefix}_infos_train.pkl')
+
+def spa_nus_top_data_prep(root_path,
+                       info_prefix,
+                       version,
+                       dataset_name,
+                       out_dir,
+                       max_sweeps=1):
+    """Prepare data related to nuScenes dataset.
+
+    Related data consists of '.pkl' files recording basic infos,
+    2D annotations and groundtruth database.
+
+    Args:
+        root_path (str): Path of dataset root.
+        info_prefix (str): The prefix of info filenames.
+        version (str): Dataset version.
+        dataset_name (str): The dataset class name.
+        out_dir (str): Output directory of the groundtruth database info.
+        max_sweeps (int, optional): Number of input consecutive frames.
+            Default: 10
+    """
+    spa_nus_top_converter.create_spa_nus_top_infos(
+        root_path, info_prefix, version=version, max_sweeps=max_sweeps)
+
+    if version == 'v1.0-test':
+        info_test_path = osp.join(root_path, f'{info_prefix}_infos_test.pkl')
+        spa_nus_top_converter.export_2d_annotation(
+            root_path, info_test_path, version=version)
+        return
+
+    info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
+    info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
+
+    # for mono 3d
+    spa_nus_top_converter.export_2d_annotation(
+        root_path, info_train_path, version=version)
+    spa_nus_top_converter.export_2d_annotation(
+        root_path, info_val_path, version=version)
+
+    create_groundtruth_database(dataset_name, root_path, info_prefix,
+                                f'{out_dir}/{info_prefix}_infos_train.pkl')
+
+def spa_nus_bottom_data_prep(root_path,
+                       info_prefix,
+                       version,
+                       dataset_name,
+                       out_dir,
+                       max_sweeps=1):
+    """Prepare data related to nuScenes dataset.
+
+    Related data consists of '.pkl' files recording basic infos,
+    2D annotations and groundtruth database.
+
+    Args:
+        root_path (str): Path of dataset root.
+        info_prefix (str): The prefix of info filenames.
+        version (str): Dataset version.
+        dataset_name (str): The dataset class name.
+        out_dir (str): Output directory of the groundtruth database info.
+        max_sweeps (int, optional): Number of input consecutive frames.
+            Default: 10
+    """
+    spa_nus_bottom_converter.create_spa_nus_bottom_infos(
+        root_path, info_prefix, version=version, max_sweeps=max_sweeps)
+
+    if version == 'v1.0-test':
+        info_test_path = osp.join(root_path, f'{info_prefix}_infos_test.pkl')
+        spa_nus_bottom_converter.export_2d_annotation(
+            root_path, info_test_path, version=version)
+        return
+
+    info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
+    info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
+
+    # for mono 3d
+    spa_nus_bottom_converter.export_2d_annotation(
+        root_path, info_train_path, version=version)
+    spa_nus_bottom_converter.export_2d_annotation(
         root_path, info_val_path, version=version)
 
     create_groundtruth_database(dataset_name, root_path, info_prefix,
@@ -241,86 +323,6 @@ def waymo_data_prep(root_path,
         with_mask=False,
         num_worker=workers).create()
 
-def spa_data_prep(root_path,
-                    info_prefix,
-                    version,
-                    out_dir,
-                    with_plane=False):
-    """Prepare data related to Kitti dataset.
-
-    Related data consists of '.pkl' files recording basic infos,
-    2D annotations and groundtruth database.
-
-    Args:
-        root_path (str): Path of dataset root.
-        info_prefix (str): The prefix of info filenames.
-        version (str): Dataset version.
-        out_dir (str): Output directory of the groundtruth database info.
-        with_plane (bool, optional): Whether to use plane information.
-            Default: False.
-    """
-    spa.create_spa_info_file(root_path, info_prefix, with_plane)
-    spa.create_reduced_point_cloud(root_path, info_prefix)
-
-    info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
-    info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
-    info_trainval_path = osp.join(root_path,
-                                  f'{info_prefix}_infos_trainval.pkl')
-    info_test_path = osp.join(root_path, f'{info_prefix}_infos_test.pkl')
-    spa.export_2d_annotation(root_path, info_train_path)
-    spa.export_2d_annotation(root_path, info_val_path)
-    spa.export_2d_annotation(root_path, info_trainval_path)
-    spa.export_2d_annotation(root_path, info_test_path)
-
-    create_groundtruth_database(
-        'SPADataset',
-        root_path,
-        info_prefix,
-        f'{out_dir}/{info_prefix}_infos_train.pkl',
-        relative_path=False,
-        mask_anno_path='instances_train.json',
-        with_mask=(version == 'mask'))
-    
-def spa_mvx_data_prep(root_path,
-                    info_prefix,
-                    version,
-                    out_dir,
-                    with_plane=False):
-    """Prepare data related to Kitti dataset.
-
-    Related data consists of '.pkl' files recording basic infos,
-    2D annotations and groundtruth database.
-
-    Args:
-        root_path (str): Path of dataset root.
-        info_prefix (str): The prefix of info filenames.
-        version (str): Dataset version.
-        out_dir (str): Output directory of the groundtruth database info.
-        with_plane (bool, optional): Whether to use plane information.
-            Default: False.
-    """
-    spa_mvx.create_spa_mvx_info_file(root_path, info_prefix, with_plane)
-    spa_mvx.create_reduced_point_cloud(root_path, info_prefix)
-
-    info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
-    info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
-    info_trainval_path = osp.join(root_path,
-                                  f'{info_prefix}_infos_trainval.pkl')
-    info_test_path = osp.join(root_path, f'{info_prefix}_infos_test.pkl')
-    spa_mvx.export_2d_annotation(root_path, info_train_path)
-    spa_mvx.export_2d_annotation(root_path, info_val_path)
-    spa_mvx.export_2d_annotation(root_path, info_trainval_path)
-    spa_mvx.export_2d_annotation(root_path, info_test_path)
-
-    create_groundtruth_database(
-        'SPA_MVX_Dataset',
-        root_path,
-        info_prefix,
-        f'{out_dir}/{info_prefix}_infos_train.pkl',
-        relative_path=False,
-        mask_anno_path='instances_train.json',
-        with_mask=(version == 'mask'))
-
 
 parser = argparse.ArgumentParser(description='Data converter arg parser')
 parser.add_argument('dataset', metavar='kitti', help='name of the dataset')
@@ -386,6 +388,24 @@ if __name__ == '__main__':
         #     dataset_name='SPA_Nus_Dataset',
         #     out_dir=args.out_dir,
         #     max_sweeps=args.max_sweeps)
+    elif args.dataset == 'spa_nus_top' and args.version == 'v1.0-spa-trainval':
+        train_version = f'{args.version}'
+        spa_nus_top_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            version=train_version,
+            dataset_name='SPA_Nus_Dataset_Top',
+            out_dir=args.out_dir,
+            max_sweeps=args.max_sweeps)
+    elif args.dataset == 'spa_nus_bottom' and args.version == 'v1.0-spa-trainval':
+        train_version = f'{args.version}'
+        spa_nus_bottom_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            version=train_version,
+            dataset_name='SPA_Nus_Dataset_Bottom',
+            out_dir=args.out_dir,
+            max_sweeps=args.max_sweeps)
     elif args.dataset == 'nuscenes' and args.version == 'v1.0-trainval':
         train_version = f'{args.version}-trainval'
         nuscenes_data_prep(
@@ -452,18 +472,4 @@ if __name__ == '__main__':
             num_points=args.num_points,
             out_dir=args.out_dir,
             workers=args.workers)
-    elif args.dataset == 'spa':
-        spa_data_prep(
-            root_path=args.root_path,
-            info_prefix=args.extra_tag,
-            version=args.version,
-            out_dir=args.out_dir,
-            with_plane=args.with_plane)
-    elif args.dataset == 'spa_mvx':
-        spa_mvx_data_prep(
-            root_path=args.root_path,
-            info_prefix=args.extra_tag,
-            version=args.version,
-            out_dir=args.out_dir,
-            with_plane=args.with_plane)
 

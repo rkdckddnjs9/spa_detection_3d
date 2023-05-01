@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/spa_nus-3d_ped.py',
+    '../_base_/datasets/spa_nus_top-3d_ped.py',
     '../_base_/models/centerpoint_02pillar_second_secfpn_spa_nus_ped.py',
     '../_base_/default_runtime.py'
 ]
@@ -21,13 +21,13 @@ model = dict(
     train_cfg=dict(pts=dict(point_cloud_range=point_cloud_range)),
     test_cfg=dict(pts=dict(pc_range=point_cloud_range[:2])))
 
-dataset_type = 'SPA_Nus_Dataset'
+dataset_type = 'SPA_Nus_Dataset_Top'
 data_root = 'data/spa/'
 file_client_args = dict(backend='disk')
 
 db_sampler = dict(
     data_root=data_root,
-    info_path=data_root + 'spa_nusc_dbinfos_train.pkl',
+    info_path=data_root + 'spa_nusc_top_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
         filter_by_difficulty=[-1],
@@ -152,4 +152,4 @@ momentum_config = dict(
 )
 
 # runtime settings
-runner = dict(type='EpochBasedRunner', max_epochs=300)
+runner = dict(type='EpochBasedRunner', max_epochs=100)

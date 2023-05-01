@@ -30,7 +30,7 @@ def _read_imageset_file(path):
         lines = f.readlines()
     return [line.splitlines()[0] for line in lines]
 
-def create_spa_nus_infos(root_path,
+def create_spa_nus_top_infos(root_path,
                           info_prefix,
                           version='v1.0-trainval',
                           max_sweeps=10):
@@ -318,7 +318,7 @@ def _fill_trainval_infos(nusc,
                               [P4_intrinsic, P4_extrinsic], 
             ]
 
-        velo_path = root_path / place / scene / "velo/concat/bin_data" / "{}.bin".format(frame)
+        velo_path = root_path / place / scene / "velo/top/bin_data" / "{}.bin".format(frame)
 
         # lidar_token = sample['data']['LIDAR_TOP']
         # sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
@@ -479,7 +479,7 @@ def _fill_trainval_infos(nusc,
                               [P4_intrinsic, P4_extrinsic], 
             ]
 
-        velo_path = root_path / place / scene / "velo/concat/bin_data" / "{}.bin".format(frame)
+        velo_path = root_path / place / scene / "velo/top/bin_data" / "{}.bin".format(frame)
 
         # lidar_token = sample['data']['LIDAR_TOP']
         # sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
@@ -806,7 +806,7 @@ def get_2d_boxes(nusc,
     frame = str(cam_lnfo['data_path']).split("/")[-1].split(".")[0]
     label_path = root_path + place + "/" + scene + "/label/{}.txt".format(frame)
     label_ = get_label_anno(label_path)
-    velo_path = root_path +'/'+ place +'/'+ scene +'/'+ "velo/concat/bin_data/{}.bin".format(frame)
+    velo_path = root_path +'/'+ place +'/'+ scene +'/'+ "velo/top/bin_data/{}.bin".format(frame)
     points = np.fromfile(velo_path, dtype=np.float32, count=-1).reshape([-1, 4]) 
     odom_path = root_path +'/'+ place +'/'+ scene +'/'+ "ego_trajectory/{}.txt".format(frame)
 
@@ -954,7 +954,7 @@ def get_2d_boxes_(nusc,
     frame = str(cam_lnfo['data_path']).split("/")[-1].split(".")[0]
     label_path = root_path + place + "/" + scene + "/label/{}.txt".format(frame)
     label_ = get_label_anno(label_path)
-    velo_path = root_path +'/'+ place +'/'+ scene +'/'+ "velo/concat/bin_data/{}.bin".format(frame)
+    velo_path = root_path +'/'+ place +'/'+ scene +'/'+ "velo/top/bin_data/{}.bin".format(frame)
     points = np.fromfile(velo_path, dtype=np.float32, count=-1).reshape([-1, 4]) 
     odom_path = root_path +'/'+ place +'/'+ scene +'/'+ "ego_trajectory/{}.txt".format(frame)
 

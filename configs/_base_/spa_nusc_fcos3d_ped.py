@@ -15,86 +15,93 @@ class_names = [
 
 
 # ====================== model =========================================
+# model = dict(
+#     type='FCOSMono3D',
+#     backbone=dict(
+#         type='ResNet',
+#         depth=101,
+#         num_stages=4,
+#         out_indices=(0, 1, 2, 3),
+#         frozen_stages=1,
+#         norm_cfg=dict(type='BN', requires_grad=False),
+#         norm_eval=True,
+#         style='caffe',
+#         init_cfg=dict(
+#             type='Pretrained',
+#             checkpoint='open-mmlab://detectron2/resnet101_caffe')),
+#     neck=dict(
+#         type='FPN',
+#         in_channels=[256, 512, 1024, 2048],
+#         out_channels=256,
+#         start_level=1,
+#         add_extra_convs='on_output',
+#         num_outs=5,
+#         relu_before_extra_convs=True),
+#     bbox_head=dict(
+#         type='FCOSMono3DHead',
+#         num_classes=10,
+#         in_channels=256,
+#         stacked_convs=2,
+#         feat_channels=256,
+#         use_direction_classifier=True,
+#         diff_rad_by_sin=True,
+#         pred_attrs=True,
+#         pred_velo=True,
+#         dir_offset=0.7854,  # pi/4
+#         dir_limit_offset=0,
+#         strides=[8, 16, 32, 64, 128],
+#         group_reg_dims=(2, 1, 3, 1, 2),  # offset, depth, size, rot, velo
+#         cls_branch=(256, ),
+#         reg_branch=(
+#             (256, ),  # offset
+#             (256, ),  # depth
+#             (256, ),  # size
+#             (256, ),  # rot
+#             ()  # velo
+#         ),
+#         dir_branch=(256, ),
+#         attr_branch=(256, ),
+#         loss_cls=dict(
+#             type='FocalLoss',
+#             use_sigmoid=True,
+#             gamma=2.0,
+#             alpha=0.25,
+#             loss_weight=1.0),
+#         loss_bbox=dict(type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
+#         loss_dir=dict(
+#             type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
+#         loss_attr=dict(
+#             type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
+#         loss_centerness=dict(
+#             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
+#         bbox_coder=dict(type='FCOS3DBBoxCoder', code_size=9),
+#         norm_on_bbox=True,
+#         centerness_on_reg=True,
+#         center_sampling=True,
+#         conv_bias=True,
+#         dcn_on_last_conv=True),
+#     train_cfg=dict(
+#         allowed_border=0,
+#         code_weight=[1.0, 1.0, 0.2, 1.0, 1.0, 1.0, 1.0, 0.05, 0.05],
+#         pos_weight=-1,
+#         debug=False),
+#     test_cfg=dict(
+#         use_rotate_nms=True,
+#         nms_across_levels=False,
+#         nms_pre=1000,
+#         nms_thr=0.8,
+#         score_thr=0.05,
+#         min_bbox_size=0,
+#         max_per_img=200))
+
 model = dict(
-    type='FCOSMono3D',
     backbone=dict(
-        type='ResNet',
-        depth=101,
-        num_stages=4,
-        out_indices=(0, 1, 2, 3),
-        frozen_stages=1,
-        norm_cfg=dict(type='BN', requires_grad=False),
-        norm_eval=True,
-        style='caffe',
-        init_cfg=dict(
-            type='Pretrained',
-            checkpoint='open-mmlab://detectron2/resnet101_caffe')),
-    neck=dict(
-        type='FPN',
-        in_channels=[256, 512, 1024, 2048],
-        out_channels=256,
-        start_level=1,
-        add_extra_convs='on_output',
-        num_outs=5,
-        relu_before_extra_convs=True),
-    bbox_head=dict(
-        type='FCOSMono3DHead',
-        num_classes=10,
-        in_channels=256,
-        stacked_convs=2,
-        feat_channels=256,
-        use_direction_classifier=True,
-        diff_rad_by_sin=True,
-        pred_attrs=True,
-        pred_velo=True,
-        dir_offset=0.7854,  # pi/4
-        dir_limit_offset=0,
-        strides=[8, 16, 32, 64, 128],
-        group_reg_dims=(2, 1, 3, 1, 2),  # offset, depth, size, rot, velo
-        cls_branch=(256, ),
-        reg_branch=(
-            (256, ),  # offset
-            (256, ),  # depth
-            (256, ),  # size
-            (256, ),  # rot
-            ()  # velo
-        ),
-        dir_branch=(256, ),
-        attr_branch=(256, ),
-        loss_cls=dict(
-            type='FocalLoss',
-            use_sigmoid=True,
-            gamma=2.0,
-            alpha=0.25,
-            loss_weight=1.0),
-        loss_bbox=dict(type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
-        loss_dir=dict(
-            type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-        loss_attr=dict(
-            type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-        loss_centerness=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
-        bbox_coder=dict(type='FCOS3DBBoxCoder', code_size=9),
-        norm_on_bbox=True,
-        centerness_on_reg=True,
-        center_sampling=True,
-        conv_bias=True,
-        dcn_on_last_conv=True),
-    train_cfg=dict(
-        allowed_border=0,
-        code_weight=[1.0, 1.0, 0.2, 1.0, 1.0, 1.0, 1.0, 0.05, 0.05],
-        pos_weight=-1,
-        debug=False),
-    test_cfg=dict(
-        use_rotate_nms=True,
-        nms_across_levels=False,
-        nms_pre=1000,
-        nms_thr=0.8,
-        score_thr=0.05,
-        min_bbox_size=0,
-        max_per_img=200))
+        dcn=dict(type='DCNv2', deform_groups=1, fallback_on_stride=False),
+        stage_with_dcn=(False, False, True, True)))
 
-
+class_names = [
+    'pedestrian', 
+]
 
 # ===================== scheduler ======================================
 img_norm_cfg = dict(
@@ -139,8 +146,8 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=2,
+    samples_per_gpu=1,
+    workers_per_gpu=1,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
     test=dict(pipeline=test_pipeline))
@@ -156,7 +163,7 @@ lr_config = dict(
     warmup_iters=500,
     warmup_ratio=0.001,
     step=[8, 11])
-runner = dict(type='EpochBasedRunner', max_epochs=12)
+runner = dict(type='EpochBasedRunner', max_epochs=100)
 
 # learning policy
 lr_config = dict(
@@ -165,8 +172,8 @@ lr_config = dict(
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
     step=[8, 11])
-total_epochs = 12
-evaluation = dict(interval=2)
+total_epochs = 100
+evaluation = dict(interval=10)
 
 # ===================== runtime ======================================
 checkpoint_config = dict(interval=1)
@@ -184,7 +191,8 @@ log_config = dict(
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 work_dir = None
-load_from = None
+# load_from = None
+load_from = '/home/changwon/detection_task/mmdetection3d/pretrain/fcos3d_r101_caffe_fpn_gn-head_dcn_2x8_1x_nus-mono3d_20210715_235813-4bed5239.pth'
 resume_from = None
 workflow = [('train', 1)]
 
